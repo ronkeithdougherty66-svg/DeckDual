@@ -1,0 +1,1040 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Deck Duel</title>
+<meta name="description" content="A single-player card duel — draw, battle, and go to war for the whole deck.">
+<meta name="theme-color" content="#170f2e">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Deck Duel">
+<style>
+  :root{
+    --felt-dark: #170f2e;
+    --felt: #2a1f5c;
+    --felt-light: #3d5aa8;
+    --card-face: #f2ead9;
+    --card-back: #7a2e2a;
+    --card-back-line: #c9a227;
+    --ink: #2b241b;
+    --gold: #c9a227;
+    --gold-soft: #e4c65f;
+    --red-suit: #a4342a;
+    --paper: #ece3d0;
+    --shadow: rgba(0,0,0,0.45);
+  }
+
+  *{ box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body{
+    margin:0; padding:0; height:100%;
+    background: radial-gradient(ellipse at 50% 0%, var(--felt-light), var(--felt-dark) 70%);
+    font-family: Georgia, 'Times New Roman', serif;
+    color: var(--paper);
+    overflow-x:hidden;
+    -webkit-user-select:none; user-select:none;
+  }
+
+  .wrap{
+    min-height:100dvh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding: env(safe-area-inset-top,0) 16px calc(env(safe-area-inset-bottom,0) + 16px);
+    max-width: 520px;
+    margin: 0 auto;
+  }
+
+  header{
+    width:100%;
+    text-align:center;
+    padding: 18px 0 6px;
+  }
+  h1{
+    margin:0;
+    font-size: 34px;
+    letter-spacing: 4px;
+    font-weight:700;
+    color: var(--gold-soft);
+    text-shadow: 0 2px 0 rgba(0,0,0,0.5);
+  }
+  .sub{
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    font-size: 11px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(236,227,208,0.55);
+    margin-top: 2px;
+  }
+
+  .scoreboard{
+    display:flex;
+    justify-content: space-between;
+    width:100%;
+    margin: 14px 0 6px;
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+  }
+  .score{
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(201,162,39,0.35);
+    border-radius: 8px;
+    padding: 8px 14px;
+    text-align:center;
+    min-width: 84px;
+  }
+  .score .label{
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(236,227,208,0.6);
+  }
+  .score .count{
+    font-size: 26px;
+    font-weight: bold;
+    color: var(--gold-soft);
+    line-height:1.2;
+  }
+  .score.streak{
+    border-color: rgba(224,122,95,0.5);
+  }
+  .score.streak .count{
+    color: #e07a5f;
+    font-size: 22px;
+  }
+  .score.streak .count.pulse{
+    animation: streakPulse 0.4s ease;
+  }
+  @keyframes streakPulse{
+    0%{ transform: scale(1); }
+    50%{ transform: scale(1.35); }
+    100%{ transform: scale(1); }
+  }
+
+  .table{
+    position: relative;
+    width: 100%;
+    flex: 1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    min-height: 300px;
+    padding: 10px 0;
+  }
+
+  .battlefield{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap: 28px;
+    position: relative;
+    min-height: 190px;
+  }
+
+  .pile-label{
+    position:absolute;
+    top:-22px;
+    width:100%;
+    text-align:center;
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: rgba(236,227,208,0.5);
+  }
+
+  .slot{
+    position: relative;
+    width: 108px;
+    height: 152px;
+  }
+
+  .card{
+    position:absolute;
+    inset:0;
+    width:108px;
+    height:152px;
+    border-radius: 10px;
+    box-shadow: 0 6px 14px var(--shadow);
+    backface-visibility: hidden;
+    transition: transform 0.5s cubic-bezier(.2,.8,.2,1);
+  }
+
+  .card-inner{
+    position:relative;
+    width:100%; height:100%;
+    transform-style: preserve-3d;
+    transition: transform 0.45s ease;
+  }
+  .card.flipped .card-inner{ transform: rotateY(180deg); }
+
+  .face, .back{
+    position:absolute;
+    inset:0;
+    border-radius:10px;
+    backface-visibility:hidden;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .back{
+    background:
+      repeating-linear-gradient(45deg, var(--card-back) 0 6px, #6b2622 6px 12px);
+    border: 3px solid var(--card-back-line);
+  }
+  .back::after{
+    content:'';
+    width: 60%; height: 60%;
+    border: 2px solid var(--card-back-line);
+    border-radius: 50%;
+    opacity: 0.6;
+  }
+
+  .face{
+    background: var(--card-face);
+    transform: rotateY(180deg);
+    color: var(--ink);
+    flex-direction: column;
+    padding: 8px;
+    justify-content: space-between;
+  }
+  .face.red{ color: var(--red-suit); }
+
+  .face .corner{
+    font-size: 18px;
+    font-weight: bold;
+    line-height:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  .face .corner.bottom{
+    align-self:flex-end;
+    transform: rotate(180deg);
+  }
+  .face .pip{
+    font-size: 44px;
+    align-self:center;
+  }
+
+  .empty-slot{
+    width:100%; height:100%;
+    border: 2px dashed rgba(236,227,208,0.2);
+    border-radius: 10px;
+  }
+
+  .war-stack{
+    position:absolute;
+    width:108px; height:152px;
+  }
+  .war-stack .card{ transform: translateY(0); }
+
+  .vs{
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: rgba(236,227,208,0.35);
+  }
+
+  .message{
+    min-height: 46px;
+    text-align:center;
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    font-size: 15px;
+    color: var(--gold-soft);
+    padding: 6px 12px;
+    letter-spacing: 0.5px;
+  }
+  .message.war{
+    color: #e07a5f;
+    font-weight:bold;
+    font-size: 20px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    animation: pulse 0.6s ease;
+  }
+  @keyframes pulse{
+    0%{ transform: scale(0.85); opacity:0; }
+    60%{ transform: scale(1.08); }
+    100%{ transform: scale(1); opacity:1; }
+  }
+
+  .controls{
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap: 10px;
+    padding: 10px 0 4px;
+  }
+
+  button{
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    border:none;
+    cursor:pointer;
+  }
+
+  .draw-btn{
+    width: 100%;
+    max-width: 320px;
+    padding: 16px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--gold-soft), var(--gold));
+    color: #2b1c05;
+    font-size: 18px;
+    font-weight:bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    box-shadow: 0 4px 0 #8a6c15, 0 8px 16px var(--shadow);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  .draw-btn:active{
+    transform: translateY(4px);
+    box-shadow: 0 0 0 #8a6c15, 0 4px 8px var(--shadow);
+  }
+  .draw-btn:disabled{
+    opacity: 0.4;
+    box-shadow:none;
+  }
+
+  .reset-btn{
+    background: none;
+    color: rgba(236,227,208,0.55);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-decoration: underline;
+    padding: 6px;
+  }
+
+  .bottom-row{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .icon-btn{
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(201,162,39,0.35);
+    color: var(--gold-soft);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+  }
+  .icon-btn:disabled{
+    opacity: 0.35;
+  }
+  .icon-btn.end-btn{
+    color: #e07a5f;
+    border-color: rgba(224,122,95,0.4);
+  }
+
+  .sound-toggle{
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(201,162,39,0.35);
+    color: var(--gold-soft);
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+  }
+  .sound-toggle.muted{
+    color: rgba(236,227,208,0.4);
+    border-color: rgba(236,227,208,0.2);
+  }
+
+  .paused-blur{
+    filter: blur(4px);
+    pointer-events: none;
+  }
+
+  .setup-input{
+    width: 100%;
+    max-width: 280px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid rgba(201,162,39,0.5);
+    background: rgba(255,255,255,0.06);
+    color: var(--paper);
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    text-align: center;
+    outline: none;
+  }
+  .setup-input:focus{
+    border-color: var(--gold-soft);
+  }
+  .setup-input::placeholder{
+    color: rgba(236,227,208,0.35);
+  }
+
+  .setup-choices{
+    display:flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .choice-btn{
+    padding: 12px 18px;
+    border-radius: 10px;
+    background: linear-gradient(180deg, var(--gold-soft), var(--gold));
+    color: #2b1c05;
+    font-size: 14px;
+    font-weight:bold;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    box-shadow: 0 3px 0 #8a6c15;
+  }
+  .choice-btn:active{
+    transform: translateY(3px);
+    box-shadow: none;
+  }
+  .choice-btn.secondary{
+    background: rgba(255,255,255,0.08);
+    color: var(--paper);
+    box-shadow: 0 3px 0 rgba(0,0,0,0.4);
+  }
+
+  .welcome-toast{
+    position: fixed;
+    top: calc(env(safe-area-inset-top,0) + 12px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-30px);
+    background: rgba(0,0,0,0.55);
+    border: 1px solid rgba(201,162,39,0.45);
+    color: var(--gold-soft);
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    font-size: 13px;
+    letter-spacing: 1px;
+    padding: 10px 18px;
+    border-radius: 20px;
+    opacity: 0;
+    z-index: 30;
+    transition: opacity 0.4s ease, transform 0.4s ease;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .welcome-toast.show{
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  .overlay{
+    position: fixed; inset:0;
+    background: rgba(10,15,13,0.88);
+    display:flex; align-items:center; justify-content:center;
+    flex-direction:column;
+    gap: 18px;
+    z-index: 20;
+    opacity:0; pointer-events:none;
+    transition: opacity 0.35s ease;
+    text-align:center;
+    padding: 24px;
+  }
+  .overlay.show{ opacity:1; pointer-events:auto; }
+  .overlay h2{
+    font-size: 30px;
+    color: var(--gold-soft);
+    letter-spacing: 3px;
+    margin:0;
+  }
+  .overlay p{
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    color: rgba(236,227,208,0.7);
+    margin:0;
+    font-size: 14px;
+  }
+
+  .history{
+    font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
+    font-size: 11px;
+    color: rgba(236,227,208,0.4);
+    text-align:center;
+    padding-top: 4px;
+    min-height: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>DECK DUEL</h1>
+    <div class="sub">One deck &middot; two soldiers &middot; no mercy</div>
+  </header>
+
+  <div class="scoreboard">
+    <div class="score">
+      <div class="label" id="playerLabel">You</div>
+      <div class="count" id="playerCount">26</div>
+    </div>
+    <div class="score">
+      <div class="label" id="cpuLabel">CPU</div>
+      <div class="count" id="cpuCount">26</div>
+    </div>
+    <div class="score streak">
+      <div class="label">Streak</div>
+      <div class="count" id="streakCount">0</div>
+    </div>
+  </div>
+
+  <div class="table">
+    <div class="battlefield" id="battlefield">
+      <div class="slot" id="playerSlot">
+        <div class="pile-label">You</div>
+        <div class="empty-slot"></div>
+      </div>
+      <div class="vs">VS</div>
+      <div class="slot" id="cpuSlot">
+        <div class="pile-label">CPU</div>
+        <div class="empty-slot"></div>
+      </div>
+    </div>
+    <div class="message" id="message">Tap Draw to begin.</div>
+    <div class="history" id="history"></div>
+  </div>
+
+  <div class="controls">
+    <button class="draw-btn" id="drawBtn">Draw</button>
+    <div class="bottom-row">
+      <button class="icon-btn" id="pauseBtn">Pause</button>
+      <button class="icon-btn end-btn" id="endBtn">End Game</button>
+      <button class="reset-btn" id="resetBtn">Start Over</button>
+      <button class="sound-toggle" id="soundToggle">Sound: On</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="pauseOverlay">
+  <h2>Paused</h2>
+  <p>Take your time. The deck isn't going anywhere.</p>
+  <button class="draw-btn" id="resumeBtn" style="max-width:220px;">Resume</button>
+</div>
+
+<div class="overlay" id="setupOverlay">
+  <div id="setupContent"></div>
+</div>
+
+<div class="welcome-toast" id="welcomeToast"></div>
+
+<div class="overlay" id="overlay">
+  <h2 id="overlayTitle">You Win!</h2>
+  <p id="overlayText">You captured the entire deck.</p>
+  <button class="draw-btn" id="playAgainBtn" style="max-width:220px;">Play Again</button>
+</div>
+
+<script>
+(function(){
+  const SUITS = [
+    {name:'spades', symbol:'\u2660', color:'black'},
+    {name:'hearts', symbol:'\u2665', color:'red'},
+    {name:'clubs', symbol:'\u2663', color:'black'},
+    {name:'diamonds', symbol:'\u2666', color:'red'}
+  ];
+  const RANK_ORDER = ['2','3','4','5','6','7','8','9','10','J','Q','K','A'];
+
+  let playerDeck = [];
+  let cpuDeck = [];
+  let tablePlayer = []; // cards currently laid down this round (for war piles)
+  let tableCpu = [];
+  let busy = false;
+  let playerName = '';
+  let cpuName = '';
+  let hasPlayedBefore = false;
+
+  const playerCountEl = document.getElementById('playerCount');
+  const cpuCountEl = document.getElementById('cpuCount');
+  const playerLabel = document.getElementById('playerLabel');
+  const cpuLabel = document.getElementById('cpuLabel');
+  const playerSlot = document.getElementById('playerSlot');
+  const cpuSlot = document.getElementById('cpuSlot');
+  const messageEl = document.getElementById('message');
+  const historyEl = document.getElementById('history');
+  const drawBtn = document.getElementById('drawBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const overlay = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlayTitle');
+  const overlayText = document.getElementById('overlayText');
+  const playAgainBtn = document.getElementById('playAgainBtn');
+  const streakCountEl = document.getElementById('streakCount');
+  const soundToggle = document.getElementById('soundToggle');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const endBtn = document.getElementById('endBtn');
+  const pauseOverlay = document.getElementById('pauseOverlay');
+  const resumeBtn = document.getElementById('resumeBtn');
+  const table = document.querySelector('.table');
+  const setupOverlay = document.getElementById('setupOverlay');
+  const setupContent = document.getElementById('setupContent');
+  const welcomeToast = document.getElementById('welcomeToast');
+
+  let isPaused = false;
+  let isGameOver = false;
+
+  let currentStreak = 0;
+  let soundOn = true;
+  let audioCtx = null;
+
+  function getAudioCtx(){
+    if(!audioCtx){
+      const AC = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AC();
+    }
+    if(audioCtx.state === 'suspended'){
+      audioCtx.resume();
+    }
+    return audioCtx;
+  }
+
+  function tone(freq, start, duration, type, peakGain){
+    if(!soundOn) return;
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+    gain.gain.setValueAtTime(0, ctx.currentTime + start);
+    gain.gain.linearRampToValueAtTime(peakGain || 0.18, ctx.currentTime + start + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(ctx.currentTime + start);
+    osc.stop(ctx.currentTime + start + duration + 0.02);
+  }
+
+  function playFlip(){
+    tone(320, 0, 0.08, 'square', 0.10);
+  }
+
+  function playRoundWin(){
+    tone(523.25, 0, 0.12, 'triangle', 0.16);
+    tone(659.25, 0.09, 0.16, 'triangle', 0.16);
+    tone(784.0, 0.18, 0.2, 'triangle', 0.16);
+  }
+
+  function playRoundLose(){
+    tone(300, 0, 0.16, 'sawtooth', 0.12);
+    tone(220, 0.1, 0.24, 'sawtooth', 0.12);
+  }
+
+  function playWarSting(){
+    tone(160, 0, 0.3, 'sawtooth', 0.16);
+    tone(170, 0.05, 0.3, 'sawtooth', 0.14);
+    tone(150, 0.15, 0.35, 'square', 0.12);
+  }
+
+  function playGameWin(){
+    [523.25, 659.25, 784.0, 1046.5].forEach((f, i) => tone(f, i * 0.14, 0.35, 'triangle', 0.18));
+  }
+
+  function playGameLose(){
+    [392.0, 349.23, 293.66, 261.63].forEach((f, i) => tone(f, i * 0.18, 0.4, 'sawtooth', 0.14));
+  }
+
+  function updateStreak(delta){
+    if(delta === 'reset'){
+      currentStreak = 0;
+    } else {
+      currentStreak += 1;
+    }
+    streakCountEl.textContent = currentStreak;
+    streakCountEl.classList.remove('pulse');
+    void streakCountEl.offsetWidth;
+    streakCountEl.classList.add('pulse');
+  }
+
+  function buildDeck(){
+    const deck = [];
+    for(const suit of SUITS){
+      for(const rank of RANK_ORDER){
+        deck.push({rank, suit: suit.name, symbol: suit.symbol, color: suit.color, value: RANK_ORDER.indexOf(rank)});
+      }
+    }
+    return deck;
+  }
+
+  function shuffle(deck){
+    for(let i = deck.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i+1));
+      [deck[i], deck[j]] = [deck[j], deck[i]];
+    }
+    return deck;
+  }
+
+  function newGame(){
+    const deck = shuffle(buildDeck());
+    playerDeck = deck.slice(0, 26);
+    cpuDeck = deck.slice(26);
+    tablePlayer = [];
+    tableCpu = [];
+    busy = false;
+    isPaused = false;
+    isGameOver = false;
+    pauseOverlay.classList.remove('show');
+    pauseBtn.textContent = 'Pause';
+    pauseBtn.disabled = false;
+    endBtn.disabled = false;
+    table.classList.remove('paused-blur');
+    currentStreak = 0;
+    streakCountEl.textContent = '0';
+    streakCountEl.classList.remove('pulse');
+    overlay.classList.remove('show');
+    updateCounts();
+    setMessage('Tap Draw to begin.');
+    historyEl.textContent = '';
+    clearSlot(playerSlot, 'You');
+    clearSlot(cpuSlot, cpuName);
+    drawBtn.disabled = false;
+  }
+
+  function updateCounts(){
+    playerCountEl.textContent = playerDeck.length + tablePlayer.length;
+    cpuCountEl.textContent = cpuDeck.length + tableCpu.length;
+  }
+
+  function setMessage(text, isWar){
+    messageEl.textContent = text;
+    messageEl.className = 'message' + (isWar ? ' war' : '');
+  }
+
+  function clearSlot(slotEl, label){
+    slotEl.innerHTML = '<div class="pile-label">' + label + '</div><div class="empty-slot"></div>';
+  }
+
+  function cardFaceHTML(card){
+    const colorClass = card.color === 'red' ? ' red' : '';
+    return (
+      '<div class="face' + colorClass + '">' +
+        '<div class="corner"><span>' + card.rank + '</span><span>' + card.symbol + '</span></div>' +
+        '<div class="pip">' + card.symbol + '</div>' +
+        '<div class="corner bottom"><span>' + card.rank + '</span><span>' + card.symbol + '</span></div>' +
+      '</div>'
+    );
+  }
+
+  function renderCard(slotEl, label, card, faceDown){
+    slotEl.innerHTML =
+      '<div class="pile-label">' + label + '</div>' +
+      '<div class="card" id="cardAnim">' +
+        '<div class="card-inner">' +
+          '<div class="back"></div>' +
+          cardFaceHTML(card) +
+        '</div>' +
+      '</div>';
+    const cardEl = slotEl.querySelector('.card');
+    if(!faceDown){
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => cardEl.classList.add('flipped'));
+      });
+    }
+  }
+
+  function rankLabel(card){
+    return card.rank + ' of ' + card.suit;
+  }
+
+  function draw(){
+    if(busy || isPaused || isGameOver) return;
+    if(playerDeck.length === 0 && tablePlayer.length === 0){ return; }
+    if(cpuDeck.length === 0 && tableCpu.length === 0){ return; }
+    busy = true;
+    drawBtn.disabled = true;
+    playRound();
+  }
+
+  function playRound(warDepth){
+    warDepth = warDepth || 0;
+
+    if(playerDeck.length === 0){
+      // shouldn't happen mid-war due to checks, but guard anyway
+      resolveNoCards('cpu');
+      return;
+    }
+    if(cpuDeck.length === 0){
+      resolveNoCards('player');
+      return;
+    }
+
+    const pCard = playerDeck.shift();
+    const cCard = cpuDeck.shift();
+    tablePlayer.push(pCard);
+    tableCpu.push(cCard);
+
+    renderCard(playerSlot, 'You', pCard, false);
+    renderCard(cpuSlot, cpuName, cCard, false);
+    updateCounts();
+    playFlip();
+
+    if(warDepth === 0){
+      setMessage('You: ' + rankLabel(pCard) + '  vs  ' + cpuName + ': ' + rankLabel(cCard));
+    } else {
+      setMessage('WAR! Battle card: You ' + pCard.rank + ' vs ' + cpuName + ' ' + cCard.rank, true);
+    }
+
+    setTimeout(() => {
+      if(pCard.value > cCard.value){
+        settleRound('player');
+      } else if(cCard.value > pCard.value){
+        settleRound('cpu');
+      } else {
+        triggerWar(warDepth);
+      }
+    }, 850);
+  }
+
+  function triggerWar(warDepth){
+    // Check if either player can't afford a war (needs at least 1 card to burn + 1 to battle, ideally)
+    if(playerDeck.length === 0 && cpuDeck.length === 0){
+      // both out simultaneously - split is impossible, just resolve as draw by giving to whoever has more table cards (edge case)
+      const winner = tablePlayer.length >= tableCpu.length ? 'player' : 'cpu';
+      settleRound(winner, true);
+      return;
+    }
+    if(playerDeck.length === 0){
+      resolveNoCards('cpu');
+      return;
+    }
+    if(cpuDeck.length === 0){
+      resolveNoCards('player');
+      return;
+    }
+
+    setMessage('WAR!', true);
+    playWarSting();
+
+    // burn one card face-down each (if available), then battle again
+    setTimeout(() => {
+      if(playerDeck.length > 0){
+        tablePlayer.push(playerDeck.shift());
+      }
+      if(cpuDeck.length > 0){
+        tableCpu.push(cpuDeck.shift());
+      }
+      updateCounts();
+      renderCard(playerSlot, 'You (face-down)', {rank:'', suit:'', symbol:'', color:'black'}, true);
+      renderCard(cpuSlot, cpuName + ' (face-down)', {rank:'', suit:'', symbol:'', color:'black'}, true);
+
+      setTimeout(() => {
+        playRound(warDepth + 1);
+      }, 700);
+    }, 700);
+  }
+
+  function resolveNoCards(winner){
+    // the side with zero remaining deck loses immediately, other side takes the pot
+    settleRound(winner, true);
+  }
+
+  function settleRound(winner, forcedByEmptyDeck){
+    const pot = tablePlayer.concat(tableCpu);
+    shuffle(pot);
+    if(winner === 'player'){
+      playerDeck = playerDeck.concat(pot);
+      setMessage(forcedByEmptyDeck ? cpuName + ' is out of cards for the war — you take the pot!' : 'You win the round! +' + pot.length + ' cards');
+      updateStreak('increment');
+      playRoundWin();
+    } else {
+      cpuDeck = cpuDeck.concat(pot);
+      setMessage(forcedByEmptyDeck ? 'You are out of cards for the war — ' + cpuName + ' takes the pot!' : cpuName + ' wins the round. +' + pot.length + ' cards for ' + cpuName);
+      updateStreak('reset');
+      playRoundLose();
+    }
+    tablePlayer = [];
+    tableCpu = [];
+    updateCounts();
+    historyEl.textContent = 'Pile size: ' + pot.length + ' card' + (pot.length === 1 ? '' : 's');
+
+    busy = false;
+
+    setTimeout(() => {
+      checkGameOver();
+    }, 400);
+  }
+
+  function checkGameOver(){
+    const pTotal = playerDeck.length + tablePlayer.length;
+    const cTotal = cpuDeck.length + tableCpu.length;
+    if(pTotal === 0){
+      endGame(false);
+    } else if(cTotal === 0){
+      endGame(true);
+    } else {
+      drawBtn.disabled = false;
+    }
+  }
+
+  function endGame(playerWon, isManualEnd){
+    drawBtn.disabled = true;
+    isGameOver = true;
+    pauseBtn.disabled = true;
+    endBtn.disabled = true;
+    if(isManualEnd){
+      const pTotal = playerDeck.length + tablePlayer.length;
+      const cTotal = cpuDeck.length + tableCpu.length;
+      overlayTitle.textContent = 'Game Ended';
+      if(pTotal > cTotal){
+        overlayText.textContent = 'You were ahead ' + pTotal + ' to ' + cTotal + ' when the game ended.';
+      } else if(cTotal > pTotal){
+        overlayText.textContent = cpuName + ' was ahead ' + cTotal + ' to ' + pTotal + ' when the game ended.';
+      } else {
+        overlayText.textContent = 'It was tied ' + pTotal + ' to ' + cTotal + ' when the game ended.';
+      }
+      overlay.classList.add('show');
+      return;
+    }
+    overlayTitle.textContent = playerWon ? 'You Win!' : cpuName + ' Wins';
+    overlayText.textContent = playerWon
+      ? 'You captured the entire deck. Well fought.'
+      : cpuName + ' captured the entire deck. Run it back?';
+    if(playerWon){ playGameWin(); } else { playGameLose(); }
+    setTimeout(() => overlay.classList.add('show'), 300);
+  }
+
+  function togglePause(){
+    if(isGameOver) return;
+    isPaused = !isPaused;
+    if(isPaused){
+      pauseBtn.textContent = 'Resume';
+      pauseOverlay.classList.add('show');
+      table.classList.add('paused-blur');
+      drawBtn.disabled = true;
+    } else {
+      pauseBtn.textContent = 'Pause';
+      pauseOverlay.classList.remove('show');
+      table.classList.remove('paused-blur');
+      drawBtn.disabled = busy || isGameOver;
+      showWelcomeToast('Welcome back, ' + playerName + '!');
+    }
+  }
+
+  function manualEndGame(){
+    if(isGameOver) return;
+    const confirmed = window.confirm('End the current game? Your progress will be final.');
+    if(!confirmed) return;
+    if(isPaused){
+      isPaused = false;
+      pauseOverlay.classList.remove('show');
+      table.classList.remove('paused-blur');
+      pauseBtn.textContent = 'Pause';
+    }
+    endGame(false, true);
+  }
+
+  function showWelcomeToast(text){
+    welcomeToast.textContent = text;
+    welcomeToast.classList.add('show');
+    setTimeout(() => welcomeToast.classList.remove('show'), 2600);
+  }
+
+  // ---- Player / CPU name setup flow ----
+
+  function openSetup(){
+    setupOverlay.classList.add('show');
+  }
+  function closeSetup(){
+    setupOverlay.classList.remove('show');
+  }
+
+  function showPlayerNamePrompt(){
+    setupContent.innerHTML =
+      '<h2>Welcome</h2>' +
+      '<p>What should we call you?</p>' +
+      '<input type="text" class="setup-input" id="playerNameInput" placeholder="Your name" maxlength="18" autocomplete="off">' +
+      '<div class="setup-choices" style="margin-top:16px;">' +
+        '<button class="choice-btn" id="playerNameSubmit">Let\'s Play</button>' +
+      '</div>';
+    openSetup();
+    const input = document.getElementById('playerNameInput');
+    input.focus();
+    const submit = () => {
+      const val = input.value.trim();
+      playerName = val || 'Player';
+      playerLabel.textContent = 'You';
+      promptCpuSetup();
+    };
+    document.getElementById('playerNameSubmit').addEventListener('click', submit);
+    input.addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
+  }
+
+  function promptCpuSetup(){
+    if(cpuName){
+      setupContent.innerHTML =
+        '<h2>New Game</h2>' +
+        '<p>Same opponent as last time, ' + cpuName + '?</p>' +
+        '<div class="setup-choices">' +
+          '<button class="choice-btn" id="cpuKeepBtn">Yes, keep ' + cpuName + '</button>' +
+          '<button class="choice-btn secondary" id="cpuNewBtn">No, choose new</button>' +
+        '</div>';
+      openSetup();
+      document.getElementById('cpuKeepBtn').addEventListener('click', () => {
+        finishSetupAndStart();
+      });
+      document.getElementById('cpuNewBtn').addEventListener('click', showCpuNamePrompt);
+    } else {
+      showCpuNamePrompt();
+    }
+  }
+
+  function showCpuNamePrompt(){
+    setupContent.innerHTML =
+      '<h2>Name Your Opponent</h2>' +
+      '<p>Who are you playing against?</p>' +
+      '<input type="text" class="setup-input" id="cpuNameInput" placeholder="Opponent name" maxlength="18" autocomplete="off">' +
+      '<div class="setup-choices" style="margin-top:16px;">' +
+        '<button class="choice-btn" id="cpuNameSubmit">Deal the Cards</button>' +
+      '</div>';
+    openSetup();
+    const input = document.getElementById('cpuNameInput');
+    input.focus();
+    const submit = () => {
+      const val = input.value.trim();
+      cpuName = val || 'CPU';
+      cpuLabel.textContent = cpuName;
+      finishSetupAndStart();
+    };
+    document.getElementById('cpuNameSubmit').addEventListener('click', submit);
+    input.addEventListener('keydown', (e) => { if(e.key === 'Enter') submit(); });
+  }
+
+  function finishSetupAndStart(){
+    cpuLabel.textContent = cpuName;
+    closeSetup();
+    newGame();
+    showWelcomeToast(hasPlayedBefore ? 'Welcome back, ' + playerName + '!' : 'Welcome, ' + playerName + '!');
+    hasPlayedBefore = true;
+  }
+
+  function requestNewGame(){
+    promptCpuSetup();
+  }
+
+  soundToggle.addEventListener('click', () => {
+    soundOn = !soundOn;
+    soundToggle.textContent = 'Sound: ' + (soundOn ? 'On' : 'Off');
+    soundToggle.classList.toggle('muted', !soundOn);
+    if(soundOn){ getAudioCtx(); }
+  });
+
+  pauseBtn.addEventListener('click', togglePause);
+  resumeBtn.addEventListener('click', togglePause);
+  endBtn.addEventListener('click', manualEndGame);
+
+  drawBtn.addEventListener('click', draw);
+  resetBtn.addEventListener('click', requestNewGame);
+  playAgainBtn.addEventListener('click', requestNewGame);
+
+  showPlayerNamePrompt();
+})();
+</script>
+</body>
+</html>
