@@ -132,7 +132,7 @@
     justify-content:center;
     gap: 28px;
     position: relative;
-    min-height: 190px;
+    min-height: 230px;
   }
 
   .pile-label{
@@ -155,22 +155,30 @@
 
   .card{
     position:absolute;
-    inset:0;
+    left:0;
+    top:0;
     width:108px;
     height:152px;
     border-radius: 10px;
     box-shadow: 0 6px 14px var(--shadow);
-    backface-visibility: hidden;
-    transition: transform 0.5s cubic-bezier(.2,.8,.2,1);
+    opacity: 0;
+    transform: translateY(-170px) scale(0.82);
+    transition: transform 0.5s cubic-bezier(.2,.8,.25,1.15), opacity 0.35s ease;
+  }
+  .card.landed{
+    opacity: 1;
   }
 
   .card-inner{
     position:relative;
     width:100%; height:100%;
     transform-style: preserve-3d;
-    transition: transform 0.45s ease;
+    transition: transform 0.5s ease;
   }
   .card.flipped .card-inner{ transform: rotateY(180deg); }
+  .card.flipped{
+    box-shadow: 0 8px 22px var(--shadow), 0 0 0 2px rgba(228,198,95,0.35);
+  }
 
   .face, .back{
     position:absolute;
@@ -227,12 +235,6 @@
     border: 2px dashed rgba(236,227,208,0.2);
     border-radius: 10px;
   }
-
-  .war-stack{
-    position:absolute;
-    width:108px; height:152px;
-  }
-  .war-stack .card{ transform: translateY(0); }
 
   .vs{
     font-family: 'Trebuchet MS', Helvetica, Arial, sans-serif;
@@ -692,8 +694,8 @@
     updateCounts();
     setMessage('Tap Draw to begin.');
     historyEl.textContent = '';
-    clearSlot(playerSlot, 'You');
-    clearSlot(cpuSlot, cpuName);
+    resetSlot(playerSlot, 'You');
+    resetSlot(cpuSlot, cpuName);
     drawBtn.disabled = false;
   }
 
@@ -707,8 +709,13 @@
     messageEl.className = 'message' + (isWar ? ' war' : '');
   }
 
-  function clearSlot(slotEl, label){
+  function wait(ms){
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function resetSlot(slotEl, label){
     slotEl.innerHTML = '<div class="pile-label">' + label + '</div><div class="empty-slot"></div>';
+    slotEl.dataset.stackCount = '0';
   }
 
   function cardFaceHTML(card){
@@ -722,26 +729,61 @@
     );
   }
 
-  function renderCard(slotEl, label, card, faceDown){
-    slotEl.innerHTML =
-      '<div class="pile-label">' + label + '</div>' +
-      '<div class="card" id="cardAnim">' +
-        '<div class="card-inner">' +
-          '<div class="back"></div>' +
-          cardFaceHTML(card) +
-        '</div>' +
+  // Deals one card into a slot, stacked on top of whatever is already there.
+  // Animates the placement (slide + fade in), and, if faceDown is false,
+  // pauses briefly then flips it face up. Resolves once the whole sequence lands.
+  async function dealCard(slotEl, card, faceDown){
+    const emptyPlaceholder = slotEl.querySelector('.empty-slot');
+    if(emptyPlaceholder) emptyPlaceholder.remove();
+
+    const stackIndex = parseInt(slotEl.dataset.stackCount || '0', 10);
+    slotEl.dataset.stackCount = String(stackIndex + 1);
+
+    const fan = Math.min(stackIndex, 4);
+    const dir = stackIndex % 2 === 0 ? -1 : 1;
+    const restX = dir * fan * 4;
+    const restY = -fan * 9;
+    const restRotate = dir * fan * 2.5;
+
+    const cardEl = document.createElement('div');
+    cardEl.className = 'card';
+    cardEl.style.zIndex = String(stackIndex + 1);
+    cardEl.innerHTML =
+      '<div class="card-inner">' +
+        '<div class="back"></div>' +
+        cardFaceHTML(card) +
       '</div>';
-    const cardEl = slotEl.querySelector('.card');
+    slotEl.appendChild(cardEl);
+
+    // next frame: animate from the off-screen deal position into its resting spot
+    await new Promise(r => requestAnimationFrame(r));
+    await new Promise(r => requestAnimationFrame(r));
+    cardEl.classList.add('landed');
+    cardEl.style.transform = 'translate(' + restX + 'px, ' + restY + 'px) rotate(' + restRotate + 'deg)';
+
+    await wait(DEAL_MS);
+
     if(!faceDown){
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => cardEl.classList.add('flipped'));
-      });
+      await wait(FLIP_DELAY_MS);
+      cardEl.classList.add('flipped');
+      playFlip();
+      await wait(FLIP_MS);
     }
+
+    return cardEl;
   }
 
   function rankLabel(card){
     return card.rank + ' of ' + card.suit;
   }
+
+  const DEAL_MS = 480;
+  const FLIP_DELAY_MS = 380;
+  const FLIP_MS = 480;
+  const ROUND_RESOLVE_PAUSE = 1250;
+  const TIE_RECOGNIZE_PAUSE = 1000;
+  const WAR_MESSAGE_PAUSE = 800;
+  const BURN_RECOGNIZE_PAUSE = 950;
 
   function draw(){
     if(busy || isPaused || isGameOver) return;
@@ -749,93 +791,110 @@
     if(cpuDeck.length === 0 && tableCpu.length === 0){ return; }
     busy = true;
     drawBtn.disabled = true;
-    playRound();
+    runRound(0);
   }
 
-  function playRound(warDepth){
-    warDepth = warDepth || 0;
-
+  async function runRound(warDepth){
     if(playerDeck.length === 0){
-      // shouldn't happen mid-war due to checks, but guard anyway
-      resolveNoCards('cpu');
+      await resolveNoCards('cpu');
       return;
     }
     if(cpuDeck.length === 0){
-      resolveNoCards('player');
+      await resolveNoCards('player');
       return;
+    }
+
+    if(warDepth === 0){
+      resetSlot(playerSlot, 'You');
+      resetSlot(cpuSlot, cpuName);
     }
 
     const pCard = playerDeck.shift();
     const cCard = cpuDeck.shift();
     tablePlayer.push(pCard);
     tableCpu.push(cCard);
-
-    renderCard(playerSlot, 'You', pCard, false);
-    renderCard(cpuSlot, cpuName, cCard, false);
     updateCounts();
-    playFlip();
+
+    if(warDepth === 0){
+      setMessage('Dealing your cards…');
+    } else {
+      setMessage('Revealing the war card…', true);
+    }
+
+    await Promise.all([
+      dealCard(playerSlot, pCard, false),
+      dealCard(cpuSlot, cCard, false)
+    ]);
 
     if(warDepth === 0){
       setMessage('You: ' + rankLabel(pCard) + '  vs  ' + cpuName + ': ' + rankLabel(cCard));
     } else {
-      setMessage('WAR! Battle card: You ' + pCard.rank + ' vs ' + cpuName + ' ' + cCard.rank, true);
+      setMessage('Battle card: You ' + pCard.rank + ' vs ' + cpuName + ' ' + cCard.rank, true);
     }
 
-    setTimeout(() => {
-      if(pCard.value > cCard.value){
-        settleRound('player');
-      } else if(cCard.value > pCard.value){
-        settleRound('cpu');
-      } else {
-        triggerWar(warDepth);
-      }
-    }, 850);
+    await wait(ROUND_RESOLVE_PAUSE);
+
+    if(pCard.value > cCard.value){
+      await settleRound('player');
+    } else if(cCard.value > pCard.value){
+      await settleRound('cpu');
+    } else {
+      await handleTie(warDepth);
+    }
   }
 
-  function triggerWar(warDepth){
-    // Check if either player can't afford a war (needs at least 1 card to burn + 1 to battle, ideally)
+  async function handleTie(warDepth){
+    setMessage("It's a tie!", true);
+    await wait(TIE_RECOGNIZE_PAUSE);
+    await triggerWar(warDepth);
+  }
+
+  async function triggerWar(warDepth){
+    // Check if either side can't afford a war
     if(playerDeck.length === 0 && cpuDeck.length === 0){
-      // both out simultaneously - split is impossible, just resolve as draw by giving to whoever has more table cards (edge case)
       const winner = tablePlayer.length >= tableCpu.length ? 'player' : 'cpu';
-      settleRound(winner, true);
+      await settleRound(winner, true);
       return;
     }
     if(playerDeck.length === 0){
-      resolveNoCards('cpu');
+      await resolveNoCards('cpu');
       return;
     }
     if(cpuDeck.length === 0){
-      resolveNoCards('player');
+      await resolveNoCards('player');
       return;
     }
 
     setMessage('WAR!', true);
     playWarSting();
+    await wait(WAR_MESSAGE_PAUSE);
 
-    // burn one card face-down each (if available), then battle again
-    setTimeout(() => {
-      if(playerDeck.length > 0){
-        tablePlayer.push(playerDeck.shift());
-      }
-      if(cpuDeck.length > 0){
-        tableCpu.push(cpuDeck.shift());
-      }
-      updateCounts();
-      renderCard(playerSlot, 'You (face-down)', {rank:'', suit:'', symbol:'', color:'black'}, true);
-      renderCard(cpuSlot, cpuName + ' (face-down)', {rank:'', suit:'', symbol:'', color:'black'}, true);
+    // burn one card face-down each (if available)
+    if(playerDeck.length > 0){
+      tablePlayer.push(playerDeck.shift());
+    }
+    if(cpuDeck.length > 0){
+      tableCpu.push(cpuDeck.shift());
+    }
+    updateCounts();
 
-      setTimeout(() => {
-        playRound(warDepth + 1);
-      }, 700);
-    }, 700);
+    await Promise.all([
+      dealCard(playerSlot, {rank:'', suit:'', symbol:'', color:'black'}, true),
+      dealCard(cpuSlot, {rank:'', suit:'', symbol:'', color:'black'}, true)
+    ]);
+
+    setMessage('One card down, one to decide the war…', true);
+    await wait(BURN_RECOGNIZE_PAUSE);
+
+    await runRound(warDepth + 1);
   }
 
-  function resolveNoCards(winner){
+  async function resolveNoCards(winner){
     // the side with zero remaining deck loses immediately, other side takes the pot
-    settleRound(winner, true);
+    await settleRound(winner, true);
   }
 
-  function settleRound(winner, forcedByEmptyDeck){
+  async function settleRound(winner, forcedByEmptyDeck){
     const pot = tablePlayer.concat(tableCpu);
     shuffle(pot);
     if(winner === 'player'){
@@ -856,9 +915,8 @@
 
     busy = false;
 
-    setTimeout(() => {
-      checkGameOver();
-    }, 400);
+    await wait(400);
+    checkGameOver();
   }
 
   function checkGameOver(){
